@@ -48,6 +48,7 @@ CMD_FUNC(autoban_func) {
             return 0;
         }
 
+        // Allow the user to pass an IP address, if input is not recognised as one assume it's a nickname
         char* banTarget = parv[0];
         if (!isValidIpv4Address(banTarget) && !isValidIpv6Address(banTarget)) {
             banTarget = getIPForNickname(banTarget)
@@ -58,6 +59,7 @@ CMD_FUNC(autoban_func) {
             return;
         }
 
+        // Get a correct ban mask for IPv6 address according to configured subnet
         if (isValidIpv6Address(banTarget)) {
             banTarget = getIpv6BanRange(banTarget);
         }
@@ -104,12 +106,15 @@ char* getIpv6BanRange (char *ipAddress) {
 
     uint16_t address[8];
     memcpy(address, result.sin6_addr.__u6_addr.__u6_addr16, sizeof address);
+
+    // Switch byte order, UnrealIRCD expects network order
     int i = 0;
     while (i < 8) {
         address[i] = htons(address[i]);
         i += 1;
     }
 
+    //
     int range = subnet / 4;
     int index = 0;
     char *ipRange = malloc(40);
@@ -118,15 +123,19 @@ char* getIpv6BanRange (char *ipAddress) {
         int remainder = range - index;
         char output[8];
 
+        // Our subnet division is inside the current group, calculate where and cut if off
         if (remainder < 4) {
-            int subdivision = pow(16, 4 - remainder);
-            group = group / subdivision;
+            group = group / pow(16, 4 - remainder);
+            /* For the subnet mask to work correctly we need leading zeroes inside the group,
+             * calculate the number of leading zeroes required and format the output */
             char format[6];
             sprintf(format, "%%0%dx*", remainder);
             sprintf(output, format, group);
+        // Our subnet division is exactly at the end of the current group, cut it off
         } else if (remainder == 4) {
             sprintf(output, "%x:*", group);
         }
+        // Our subnet is further along, add this group and move on to the next
         else {
             sprintf(output, "%x:", group);
         }
