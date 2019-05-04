@@ -9,11 +9,11 @@ int subnet = 56;
  * Module information
  */
 ModuleHeader MOD_HEADER(autoban) = {
-    "autoban",
-    "$Id$",
-    "Module that automatically retrieves user IP and performs a GZLine",
-    "4.0",
-    NULL
+"autoban",
+"$Id$",
+"Module that automatically retrieves user IP and performs a GZLine",
+"4.0",
+NULL
 };
 
 /**
@@ -61,12 +61,13 @@ CMD_FUNC(autoban_func) {
 
         // Get a correct ban mask for IPv6 address according to configured subnet
         if (isValidIpv6Address(banTarget)) {
-            banTarget = getIpv6BanRange(banTarget);
+            banTarget = getIPv6BanRange(banTarget);
+        } else if (isValidIpv4Address(banTarget)) {
+            banTarget = getIPv4BanRange(banTarget);
         }
 
         parv[0] = banTarget;
         m_tkl_line(cptr, sptr, parc, parv, "G");
-        free(banTarget);
         return 0;
 };
 
@@ -92,12 +93,18 @@ bool isValidIpv6Address (char *ipAddress) {
     return result != 0;
 }
 
+char* getIPv4BanRange (char* ipAddress) {
+    char *target = "*@";
+    strcat(target, ipAddress);
+    return target;
+}
+
 /**
  * Get an IPV6 ban mask wildcarded for the configured subnet
  * @param ipAddress an IPv6 address
  * @return A wildcarded IPV6 ban mask
  */
-char* getIpv6BanRange (char *ipAddress) {
+char* getIPv6BanRange (char *ipAddress) {
     struct sockaddr_in6 result;
     int success = inet_pton(AF_INET6, ipAddress, &(result.sin6_addr));
     if (success != 1) {
@@ -117,7 +124,7 @@ char* getIpv6BanRange (char *ipAddress) {
     //
     int range = subnet / 4;
     int index = 0;
-    char *ipRange = malloc(40);
+    char *ipRange = "*@";
     while (index < range) {
         uint16_t group = address[(index / 4)];
         int remainder = range - index;
@@ -131,11 +138,11 @@ char* getIpv6BanRange (char *ipAddress) {
             char format[6];
             sprintf(format, "%%0%dx*", remainder);
             sprintf(output, format, group);
-        // Our subnet division is exactly at the end of the current group, cut it off
+            // Our subnet division is exactly at the end of the current group, cut it off
         } else if (remainder == 4) {
             sprintf(output, "%x:*", group);
         }
-        // Our subnet is further along, add this group and move on to the next
+            // Our subnet is further along, add this group and move on to the next
         else {
             sprintf(output, "%x:", group);
         }
