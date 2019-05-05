@@ -167,7 +167,8 @@ char* getIPv6BanRange (char *ipAddress) {
  */
 bool isIRCCloudAddress (const char *address) {
   int index = 0;
-  while (index < sizeof(irccloudIPv4List)) {
+  int listLength = sizeof(irccloudIPv4List) / sizeof(irccloudIPv4List[0]);
+  while (index < listLength) {
     if (strncmp(irccloudIPv4List[index], address, strlen(address)) == 0) {
       return true;
     }
