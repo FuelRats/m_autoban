@@ -1,13 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include "unrealircd.h"
 
 #if __APPLE__
 #define s6_addr16		__u6_addr.__u6_addr16
 #endif
 
+CMD_FUNC(autoban_func);
+int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type);
+int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs);
+
 int subnet = 56;
-char* defaultReason = "No reason";
+char* defaultReason = "You have been banned for a terms of service violation.";
 
 struct IPUserInfo {
     char* username;
@@ -38,15 +43,15 @@ NULL
 };
 
 MOD_TEST(m_autoban) {
+  HookAdd(modinfo->handle, HOOKTYPE_CONFIGTEST, 0, autoban_config_test);
   return MOD_SUCCESS;
 }
-
-CMD_FUNC(autoban_func);
 
 /**
  * Called when the module is initialised by UnrealIRCD
  */
 MOD_INIT(m_autoban) {
+  HookAdd(modinfo->handle, HOOKTYPE_CONFIGRUN, 0, autoban_config_run);
   CommandAdd(modinfo->handle, "AUTOBAN", autoban_func, 3, M_USER);
   return MOD_SUCCESS;
 }
@@ -60,6 +65,67 @@ MOD_LOAD(m_autoban) {
 
 MOD_UNLOAD(m_tkl) {
   return MOD_SUCCESS;
+}
+
+int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs) {
+  int errors = 0;
+  ConfigEntry *cep, *cep2;
+
+  if (type != CONFIG_SET) {
+    return 0;
+  }
+
+  if (!ce || !ce->ce_varname || strcmp(ce->ce_varname, "autoban")) {
+    return 0;
+  }
+
+  for (cep = ce->ce_entries; cep; cep = cep->ce_next) {
+    if (!cep->ce_varname) {
+      config_error("%s:%i: blank set::autoban item",
+                   cep->ce_fileptr->cf_filename, cep->ce_varlinenum);
+      errors += 1;
+      continue;
+    }
+    else if (!strcmp(cep->ce_varname, "subnet")) {
+      if (atoi(cep->ce_vardata) == 0) {
+        config_error("%s:%i: expected a valid IPv6 subnet as integer set::autoban::%s",
+                     cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
+        errors += 1;
+      }
+    }
+    else if (!strcmp(cep->ce_varname, "message")) {
+      if (strlen(cep->ce_vardata) < 1) {
+        config_error("%s:%i: default ban message required set::autoban::%s",
+                     cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
+        errors += 1;
+      }
+    }
+    else {
+      config_error("%s:%i: unknown directive set::autoban::%s",
+                   cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
+      errors += 1;
+    }
+  }
+  *errs = errors;
+  return errors ? -1 : 1;
+}
+
+int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type) {
+  ConfigEntry *cep;
+
+  if (type != CONFIG_SET)
+    return 0;
+
+  if (!ce || !ce->ce_varname || strcmp(ce->ce_varname, "autoban"))
+    return 0;
+
+  for (cep = ce->ce_entries; cep; cep = cep->ce_next) {
+    if (!strcmp(cep->ce_varname, "subnet"))
+      subnet = atoi(cep->ce_vardata);
+    else if (!strcmp(cep->ce_varname, "message"))
+      defaultReason = cep->ce_vardata;
+  }
+  return 1;
 }
 
 /**
