@@ -87,14 +87,14 @@ int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs) {
       continue;
     }
     else if (!strcmp(cep->ce_varname, "subnet")) {
-      if (atoi(cep->ce_vardata) == 0) {
+      if (cep->ce_vardata == NULL || atoi(cep->ce_vardata) == 0) {
         config_error("%s:%i: expected a valid IPv6 subnet as integer set::autoban::%s",
                      cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
         errors += 1;
       }
     }
     else if (!strcmp(cep->ce_varname, "message")) {
-      if (strlen(cep->ce_vardata) < 1) {
+      if (cep->ce_vardata == NULL || strlen(cep->ce_vardata) < 1) {
         config_error("%s:%i: default ban message required set::autoban::%s",
                      cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
         errors += 1;
@@ -113,17 +113,21 @@ int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs) {
 int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type) {
   ConfigEntry *cep;
 
-  if (type != CONFIG_SET)
+  if (type != CONFIG_SET) {
     return 0;
+  }
 
-  if (!ce || !ce->ce_varname || strcmp(ce->ce_varname, "autoban"))
+  if (!ce || !ce->ce_varname || strcmp(ce->ce_varname, "autoban")) {
     return 0;
+  }
 
   for (cep = ce->ce_entries; cep; cep = cep->ce_next) {
-    if (!strcmp(cep->ce_varname, "subnet"))
+    if (!strcmp(cep->ce_varname, "subnet")) {
       subnet = atoi(cep->ce_vardata);
-    else if (!strcmp(cep->ce_varname, "message"))
-      defaultReason = cep->ce_vardata;
+    } else if (!strcmp(cep->ce_varname, "message")) {
+      defaultReason = strdup(cep->ce_vardata);
+    }
+
   }
   return 1;
 }
@@ -294,7 +298,7 @@ CMD_FUNC(autoban_func) {
   if (!isValidIpv4Address(banTarget) && !isValidIpv6Address(banTarget)) {
     struct IPUserInfo userInfo = getIPForNickname(banTarget);
     banTarget = userInfo.ipAddress;
-    if (username != NULL) {
+    if (userInfo.username != NULL) {
       username = userInfo.username;
     }
   }
@@ -315,7 +319,7 @@ CMD_FUNC(autoban_func) {
   TS secs = 0;
   char expireAt[1024], setAt[1024];
 
-  if (parc > 3) {
+  if (parc > 2) {
     secs = atime(parv[2]);
     if (secs < 0) {
       sendnotice(sptr, "*** [error] The time you specified is out of range!");
@@ -335,11 +339,9 @@ CMD_FUNC(autoban_func) {
 
   ircsnprintf(setAt, sizeof(setAt), "%li", TStime());
 
-  char* reason = defaultReason;
+  char* banReason = defaultReason;
   if (parc > 3) {
-    reason = parv[3];
-  } else if (parc > 2) {
-    reason = parv[2];
+    banReason = parv[3];
   }
 
   char *tkllayer[9] = {
@@ -351,14 +353,8 @@ CMD_FUNC(autoban_func) {
       make_nick_user_host(sptr->name, sptr->user->username, GetHost(sptr)),
       expireAt,
       setAt,
-      reason
+      banReason
   };
-
-  if (parc > 3) {
-    tkllayer[8] = parv[3];
-  } else if (parc > 2) {
-    tkllayer[8] = parv[2];
-  }
 
   TS i = atol(expireAt);
   struct tm *t = gmtime(&i);
