@@ -294,7 +294,9 @@ CMD_FUNC(autoban_func) {
   if (!isValidIpv4Address(banTarget) && !isValidIpv6Address(banTarget)) {
     struct IPUserInfo userInfo = getIPForNickname(banTarget);
     banTarget = userInfo.ipAddress;
-    username = userInfo.username;
+    if (username != NULL) {
+      username = userInfo.username;
+    }
   }
 
   if (!banTarget) {
@@ -310,27 +312,35 @@ CMD_FUNC(autoban_func) {
     banTarget = ipRange;
   }
 
-  parv[1] = banTarget;
-
   TS secs = 0;
   char expireAt[1024], setAt[1024];
 
-  secs = atime(parv[2]);
-  if (secs < 0) {
-    sendnotice(sptr, "*** [error] The time you specified is out of range!");
-    return 0;
+  if (parc > 3) {
+    secs = atime(parv[2]);
+    if (secs < 0) {
+      sendnotice(sptr, "*** [error] The time you specified is out of range!");
+      return 0;
+    }
   }
 
   if (secs == 0) {
-    if (DEFAULT_BANTIME && (parc <= 3))
+    if (DEFAULT_BANTIME && (parc <= 3)) {
       ircsnprintf(expireAt, sizeof(expireAt), "%li", DEFAULT_BANTIME + TStime());
-    else
+    } else {
       ircsnprintf(expireAt, sizeof(expireAt), "%li", secs);
+    }
   } else {
     ircsnprintf(expireAt, sizeof(expireAt), "%li", secs + TStime());
   }
 
-  ircsnprintf(setAt, sizeof(expireAt), "%li", TStime());
+  ircsnprintf(setAt, sizeof(setAt), "%li", TStime());
+
+  char* reason = defaultReason;
+  if (parc > 3) {
+    reason = parv[3];
+  } else if (parc > 2) {
+    reason = parv[2];
+  }
 
   char *tkllayer[9] = {
     me.name,
@@ -341,7 +351,7 @@ CMD_FUNC(autoban_func) {
       make_nick_user_host(sptr->name, sptr->user->username, GetHost(sptr)),
       expireAt,
       setAt,
-      defaultReason
+      reason
   };
 
   if (parc > 3) {
