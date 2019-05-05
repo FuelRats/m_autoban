@@ -84,12 +84,30 @@ bool isValidIpv6Address (char *ipAddress) {
   return result != 0;
 }
 
+char* zeroPad (char* input, int size) {
+  char* pad = "0";
+  char* str = (char*) malloc(size * sizeof(char) + 1);
+  strcpy(str, input);
+
+  while (strlen(str) < size) {
+    strcat(str, pad);
+  }
+  return str;
+}
+
+void substr (char* str, char* sub , int start, int len){
+  memcpy(sub, &str[start], len);
+  sub[len] = '\0';
+}
+
 /**
  * Get an IPV6 ban mask wildcarded for the configured subnet
  * @param ipAddress an IPv6 address
  * @return A wildcarded IPV6 ban mask
  */
 char* getIPv6BanRange (char *ipAddress) {
+  char* padded = NULL;
+
   struct sockaddr_in6 result;
   int success = inet_pton(AF_INET6, ipAddress, &(result.sin6_addr));
   if (success != 1) {
@@ -118,8 +136,10 @@ char* getIPv6BanRange (char *ipAddress) {
 
     // Our subnet division is inside the current group, calculate where and cut if off
     if (remainder < 4) {
-      group = group / pow(16, 4 - remainder);
-      sprintf(output, "%x*", group);
+      sprintf(output, "%x", group);
+      padded = zeroPad(output, 4);
+      substr(padded, output, 0, remainder);
+      sprintf(output, "%s*", output);
       // Our subnet division is exactly at the end of the current group, cut it off
     } else if (remainder == 4) {
       sprintf(output, "%x:*", group);
@@ -131,6 +151,10 @@ char* getIPv6BanRange (char *ipAddress) {
 
     strcat(ipRange, output);
     index += 4;
+  }
+
+  if (padded != NULL) {
+    free(padded);
   }
 
   return ipRange;
