@@ -1,9 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "unrealircd.h"
-#include <arpa/inet.h>
+
+#if __APPLE__
+#define s6_addr16		__u6_addr.__u6_addr16
+#endif
 
 int subnet = 56;
+char* defaultReason = "No reason";
+
+struct IPUserInfo {
+    char* username;
+    char* ipAddress;
+};
 
 char* irccloudIPv4List[] = {
   "192.184.9.108",
@@ -20,69 +29,38 @@ char* irccloudIPv6Subnet = "2001:67c:2f08";
 /**
  * Module information
  */
-ModuleHeader MOD_HEADER(autoban) = {
-  "autoban",
-  "$Id$",
-  "Module that automatically retrieves user IP and performs a GZLine",
-  "4.0",
-  NULL
+ModuleHeader MOD_HEADER(m_autoban) = {
+"autoban",
+"$Id: v1.0",
+"Module that automatically retrieves user IP and performs a GZLine",
+"3.2-b8-1",
+NULL
 };
+
+MOD_TEST(m_autoban) {
+  return MOD_SUCCESS;
+}
+
+CMD_FUNC(autoban_func);
 
 /**
  * Called when the module is initialised by UnrealIRCD
  */
-MOD_INIT(autoban) = {
-  CommandAdd(modinfo->handle, "AUTOBAN", auto_func, 3, M_USER)
+MOD_INIT(m_autoban) {
+  CommandAdd(modinfo->handle, "AUTOBAN", autoban_func, 3, M_USER);
+  return MOD_SUCCESS;
 }
 
 /**
  * Called when the module is loaded by UnrealIRCD
  */
-MOD_LOAD(autoban) = {
+MOD_LOAD(m_autoban) {
   return MOD_SUCCESS;
 }
 
-/**
- * The function containing the actual logic for the /autoban command
- */
-CMD_FUNC(autoban_func) {
-  if ((parc < 2) || BadPtr(parv[1]))  {
-    sendnotice(sptr, "Error: Nick/IP required");
-    return 0;
-  }
-
-  if (IsServer(sptr)) {
-    return 0;
-  }
-
-  if (!ValidatePermissionsForPath("server-ban:zline:global",sptr,NULL,NULL,NULL)) {
-    sendto_one(sptr, err_str(ERR_NOPRIVILEGES), me.name, sptr->name);
-    return 0;
-  }
-
-  // Allow the user to pass an IP address, if input is not recognised as one assume it's a nickname
-  char* banTarget = parv[0];
-  if (!isValidIpv4Address(banTarget) && !isValidIpv6Address(banTarget)) {
-    banTarget = getIPForNickname(banTarget)
-  }
-
-  if (!banTarget) {
-    sendnotice(sptr, "Error: No valid ban target found, need an IP or an active user");
-    return;
-  }
-
-  // Get a correct ban mask for IPv6 address according to configured subnet
-  if (isValidIpv6Address(banTarget)) {
-    banTarget = getIPv6BanRange(banTarget);
-  } else if (isValidIpv4Address(banTarget)) {
-    banTarget = getIPv4BanRange(banTarget);
-  }
-
-  parv[0] = banTarget;
-  m_tkl_line(cptr, sptr, parc, parv, "G");
-  free(mask);
-  return 0;
-};
+MOD_UNLOAD(m_tkl) {
+  return MOD_SUCCESS;
+}
 
 /**
  * Check whether a string is a valid IPv4 address
@@ -106,12 +84,6 @@ bool isValidIpv6Address (char *ipAddress) {
   return result != 0;
 }
 
-char* getIPv4BanRange (char* ipAddress) {
-  char *target = "*@";
-  strcat(target, ipAddress);
-  return target;
-}
-
 /**
  * Get an IPV6 ban mask wildcarded for the configured subnet
  * @param ipAddress an IPv6 address
@@ -125,7 +97,7 @@ char* getIPv6BanRange (char *ipAddress) {
   }
 
   uint16_t address[8];
-  memcpy(address, result.sin6_addr.__u6_addr.__u6_addr16, sizeof address);
+  memcpy(address, result.sin6_addr.s6_addr16, sizeof address);
 
   // Switch byte order, UnrealIRCD expects network order
   int i = 0;
@@ -137,7 +109,8 @@ char* getIPv6BanRange (char *ipAddress) {
   //
   int range = subnet / 4;
   int index = 0;
-  char *ipRange = "*@";
+  char* ipRange = malloc(sizeof (char) * 64);
+  ipRange[0] = '\0';
   while (index < range) {
     uint16_t group = address[(index / 4)];
     int remainder = range - index;
@@ -146,11 +119,7 @@ char* getIPv6BanRange (char *ipAddress) {
     // Our subnet division is inside the current group, calculate where and cut if off
     if (remainder < 4) {
       group = group / pow(16, 4 - remainder);
-      /* For the subnet mask to work correctly we need leading zeroes inside the group,
-       * calculate the number of leading zeroes required and format the output */
-      char format[6];
-      sprintf(format, "%%0%dx*", remainder);
-      sprintf(output, format, group);
+      sprintf(output, "%x*", group);
       // Our subnet division is exactly at the end of the current group, cut it off
     } else if (remainder == 4) {
       sprintf(output, "%x:*", group);
@@ -167,6 +136,11 @@ char* getIPv6BanRange (char *ipAddress) {
   return ipRange;
 }
 
+/**
+ * Check whether an IP belongs to IRCCloud
+ * @param address the IP address to check
+ * @return whether the IP address belongs to IRCCloud
+ */
 bool isIRCCloudAddress (const char *address) {
   int index = 0;
   while (index < sizeof(irccloudIPv4List)) {
@@ -180,26 +154,126 @@ bool isIRCCloudAddress (const char *address) {
 }
 
 /**
- * Retrieve the IP of an inline user by their nickname
- * @param nickname the nickname of the online user
- * @return the IP address
+ * Get IP information for an active user by their nickname
+ * @param nickname the user's nickname
+ * @return struct containing username (if defined) and ip address
  */
-char* getIPForNickname (char* nickname) {
+struct IPUserInfo getIPForNickname (char* nickname) {
+  struct IPUserInfo noInfo = { NULL, NULL };
   struct Client* user = find_person(nickname, NULL);
+  char* username = NULL;
   if (!user) {
-    return NULL;
+    return noInfo;
   }
 
-  char *ipAddress = GetIP(user);
+  char* ipAddress = GetIP(user);
   if (!ipAddress) {
-    return NULL;
+    return noInfo;
   }
 
   if (isIRCCloudAddress(ipAddress)) {
-    char *mask = malloc (sizeof (char) * 64);
-    sprintf(mask, "%s@%s", user->username, ipAddress);
-    return mask;
+    username = user->user->username;
   }
 
-  return ipAddress;
+  struct IPUserInfo userInfo = { username, ipAddress };
+  return userInfo;
 }
+
+/**
+ * The function containing the actual logic for the /autoban command
+ */
+CMD_FUNC(autoban_func) {
+  if ((parc < 2) || BadPtr(parv[1]))  {
+    sendnotice(sptr, "Error: Nick/IP required");
+    return 0;
+  }
+
+  if (IsServer(sptr)) {
+    return 0;
+  }
+
+  if (!ValidatePermissionsForPath("server-ban:zline:global", sptr, NULL, NULL, NULL)) {
+    sendto_one(sptr, err_str(ERR_NOPRIVILEGES), me.name, sptr->name);
+    return 0;
+  }
+
+  // Allow the user to pass an IP address, if input is not recognised as one assume it's a nickname
+  char* banTarget = parv[1];
+  char* username = "*";
+  if (!isValidIpv4Address(banTarget) && !isValidIpv6Address(banTarget)) {
+    struct IPUserInfo userInfo = getIPForNickname(banTarget);
+    banTarget = userInfo.ipAddress;
+    username = userInfo.username;
+  }
+
+  if (!banTarget) {
+    sendnotice(sptr, "Error: No valid ban target found, need an IP or an active user");
+    return 0;
+  }
+
+  char* ipRange = NULL;
+
+  // Get a correct ban mask for IPv6 address according to configured subnet
+  if (isValidIpv6Address(banTarget)) {
+    ipRange = getIPv6BanRange(banTarget);
+    banTarget = ipRange;
+  }
+
+  parv[1] = banTarget;
+
+  TS secs = 0;
+  char expireAt[1024], setAt[1024];
+
+  secs = atime(parv[2]);
+  if (secs < 0) {
+    sendnotice(sptr, "*** [error] The time you specified is out of range!");
+    return 0;
+  }
+
+  if (secs == 0) {
+    if (DEFAULT_BANTIME && (parc <= 3))
+      ircsnprintf(expireAt, sizeof(expireAt), "%li", DEFAULT_BANTIME + TStime());
+    else
+      ircsnprintf(expireAt, sizeof(expireAt), "%li", secs);
+  } else {
+    ircsnprintf(expireAt, sizeof(expireAt), "%li", secs + TStime());
+  }
+
+  ircsnprintf(setAt, sizeof(expireAt), "%li", TStime());
+
+  char *tkllayer[9] = {
+    me.name,
+      "+",
+      "Z",
+      username,
+      banTarget,
+      make_nick_user_host(sptr->name, sptr->user->username, GetHost(sptr)),
+      expireAt,
+      setAt,
+      defaultReason
+  };
+
+  if (parc > 3) {
+    tkllayer[8] = parv[3];
+  } else if (parc > 2) {
+    tkllayer[8] = parv[2];
+  }
+
+  TS i = atol(expireAt);
+  struct tm *t = gmtime(&i);
+
+  if (!t) {
+    sendto_one(sptr,
+               ":%s NOTICE %s :*** [error] The time you specified is out of range",
+               me.name, sptr->name);
+    return 0;
+  }
+
+  m_tkl(&me, &me, 9, tkllayer);
+
+  if (ipRange != NULL) {
+    free(ipRange);
+  }
+  return 0;
+}
+
