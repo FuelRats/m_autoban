@@ -290,6 +290,9 @@ CMD_FUNC(autoban_func) {
     if (userInfo.username != NULL) {
       username = userInfo.username;
     }
+  } else if (isIRCCloudAddress(banTarget)) {
+    sendnotice(sptr, "Error: Do not directly ban IRCCloud IP addresses, use /autoban user");
+    return 0;
   }
 
   if (!banTarget) {
