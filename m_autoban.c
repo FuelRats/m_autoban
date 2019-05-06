@@ -64,6 +64,7 @@ MOD_LOAD(m_autoban) {
 }
 
 MOD_UNLOAD(m_tkl) {
+  free(defaultReason);
   return MOD_SUCCESS;
 }
 
@@ -85,22 +86,19 @@ int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs) {
                    cep->ce_fileptr->cf_filename, cep->ce_varlinenum);
       errors += 1;
       continue;
-    }
-    else if (!strcmp(cep->ce_varname, "subnet")) {
+    } else if (!strcmp(cep->ce_varname, "subnet")) {
       if (cep->ce_vardata == NULL || atoi(cep->ce_vardata) == 0) {
         config_error("%s:%i: expected a valid IPv6 subnet as integer set::autoban::%s",
                      cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
         errors += 1;
       }
-    }
-    else if (!strcmp(cep->ce_varname, "message")) {
+    } else if (!strcmp(cep->ce_varname, "message")) {
       if (cep->ce_vardata == NULL || strlen(cep->ce_vardata) < 1) {
         config_error("%s:%i: default ban message required set::autoban::%s",
                      cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
         errors += 1;
       }
-    }
-    else {
+    } else {
       config_error("%s:%i: unknown directive set::autoban::%s",
                    cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
       errors += 1;
@@ -127,7 +125,6 @@ int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type) {
     } else if (!strcmp(cep->ce_varname, "message")) {
       defaultReason = strdup(cep->ce_vardata);
     }
-
   }
   return 1;
 }
@@ -194,7 +191,6 @@ char* getIPv6BanRange (char *ipAddress) {
     i += 1;
   }
 
-  //
   int range = subnet / 4;
   int index = 0;
   char* ipRange = malloc(sizeof (char) * 64);
@@ -204,18 +200,16 @@ char* getIPv6BanRange (char *ipAddress) {
     int remainder = range - index;
     char output[8];
 
-    // Our subnet division is inside the current group, calculate where and cut if off
-    if (remainder < 4) {
+    if (remainder < 4) { // Our subnet division is inside the current group, calculate where and cut if off
       sprintf(output, "%x", group);
       padded = zeroPad(output, 4);
-      substr(padded, output, 0, remainder);
-      sprintf(output, "%s*", output);
-      // Our subnet division is exactly at the end of the current group, cut it off
-    } else if (remainder == 4) {
+
+      char delimitedOutput[8];
+      substr(padded, delimitedOutput, 0, remainder);
+      sprintf(output, "%s*", delimitedOutput);
+    } else if (remainder == 4) { // Our subnet division is exactly at the end of the current group, cut it off
       sprintf(output, "%x:*", group);
-    }
-      // Our subnet is further along, add this group and move on to the next
-    else {
+    } else { // Our subnet is further along, add this group and move on to the next
       sprintf(output, "%x:", group);
     }
 
@@ -313,6 +307,10 @@ CMD_FUNC(autoban_func) {
   // Get a correct ban mask for IPv6 address according to configured subnet
   if (isValidIpv6Address(banTarget)) {
     ipRange = getIPv6BanRange(banTarget);
+    if (!ipRange) {
+      sendnotice(sptr, "Error: Failed to create ban mask for IPv6 address");
+      return 0;
+    }
     banTarget = ipRange;
   }
 
