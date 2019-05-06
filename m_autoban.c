@@ -323,6 +323,8 @@ CMD_FUNC(autoban_func) {
       sendnotice(sptr, "*** [error] The time you specified is out of range!");
       return 0;
     }
+  } else {
+    secs = 604800;
   }
 
   if (secs == 0) {
