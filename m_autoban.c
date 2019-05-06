@@ -7,6 +7,12 @@
 #define s6_addr16		__u6_addr.__u6_addr16
 #endif
 
+#if UnrealProtocol < 4200
+#define BANPERMISSION "tkl:zline:global"
+#else
+#define BANPERMISSION "server-ban:zline:global"
+#endif
+
 CMD_FUNC(autoban_func);
 int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type);
 int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs);
@@ -270,7 +276,7 @@ CMD_FUNC(autoban_func) {
     return 0;
   }
 
-  if (!ValidatePermissionsForPath("tkl:zline:global", sptr, NULL, NULL, NULL)) {
+  if (!ValidatePermissionsForPath(BANPERMISSION, sptr, NULL, NULL, NULL)) {
     sendto_one(sptr, err_str(ERR_NOPRIVILEGES), me.name, sptr->name);
     return 0;
   }
