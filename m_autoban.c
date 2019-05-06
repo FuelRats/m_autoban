@@ -151,17 +151,6 @@ bool isValidIpv6Address (char *ipAddress) {
   return result != 0;
 }
 
-char* zeroPad (char* input, int size) {
-  char* pad = "0";
-  char* str = (char*) malloc(size * sizeof(char) + 1);
-  strcpy(str, input);
-
-  while (strlen(str) < size) {
-    strcat(str, pad);
-  }
-  return str;
-}
-
 void substr (char* str, char* sub , int start, int len){
   memcpy(sub, &str[start], len);
   sub[len] = '\0';
@@ -173,8 +162,6 @@ void substr (char* str, char* sub , int start, int len){
  * @return A wildcarded IPV6 ban mask
  */
 char* getIPv6BanRange (char *ipAddress) {
-  char* padded = NULL;
-
   struct sockaddr_in6 result;
   int success = inet_pton(AF_INET6, ipAddress, &(result.sin6_addr));
   if (success != 1) {
@@ -200,25 +187,27 @@ char* getIPv6BanRange (char *ipAddress) {
     int remainder = range - index;
     char output[8];
 
-    if (remainder < 4) { // Our subnet division is inside the current group, calculate where and cut if off
-      sprintf(output, "%x", group);
-      padded = zeroPad(output, 4);
-
-      char delimitedOutput[8];
-      substr(padded, delimitedOutput, 0, remainder);
-      sprintf(output, "%s*", delimitedOutput);
-    } else if (remainder == 4) { // Our subnet division is exactly at the end of the current group, cut it off
+    // Our subnet division is inside the current group, calculate where and cut if off
+    if (remainder < 4) {
+      if (group == 0) {
+        sprintf(output, "*");
+      } else {
+        sprintf(output, "%x", group);
+        char delimitedOutput[8];
+        substr(output, delimitedOutput, 0, remainder);
+        sprintf(output, "%s*", delimitedOutput);
+      }
+      // Our subnet division is exactly at the end of the current group, cut it off
+    } else if (remainder == 4) {
       sprintf(output, "%x:*", group);
-    } else { // Our subnet is further along, add this group and move on to the next
+    }
+      // Our subnet is further along, add this group and move on to the next
+    else {
       sprintf(output, "%x:", group);
     }
 
     strcat(ipRange, output);
     index += 4;
-  }
-
-  if (padded != NULL) {
-    free(padded);
   }
 
   return ipRange;
@@ -281,7 +270,7 @@ CMD_FUNC(autoban_func) {
     return 0;
   }
 
-  if (!ValidatePermissionsForPath("server-ban:zline:global", sptr, NULL, NULL, NULL)) {
+  if (!ValidatePermissionsForPath("tkl:zline:global", sptr, NULL, NULL, NULL)) {
     sendto_one(sptr, err_str(ERR_NOPRIVILEGES), me.name, sptr->name);
     return 0;
   }
@@ -347,7 +336,7 @@ CMD_FUNC(autoban_func) {
   char *tkllayer[9] = {
     me.name,
       "+",
-      "Z",
+      "G",
       username,
       banTarget,
       make_nick_user_host(sptr->name, sptr->user->username, GetHost(sptr)),
