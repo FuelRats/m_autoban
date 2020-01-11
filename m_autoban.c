@@ -18,7 +18,7 @@ int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type);
 int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs);
 
 int subnet = 56;
-char* defaultReason = "You have been banned for %s due to a terms of service violation.";
+char* defaultReason = "You have been banned %s due to a terms of service violation.";
 
 struct IPUserInfo {
     char* username;
@@ -42,7 +42,7 @@ char* irccloudIPv6Subnet = "2001:67c:2f08";
  */
 ModuleHeader MOD_HEADER(m_autoban) = {
   "autoban",
-  "$Id: v1.1",
+  "$Id: v1.0",
   "Module that automatically retrieves user IP and performs a GZLine",
   "3.2-b8-1",
   NULL
@@ -275,14 +275,16 @@ char* timespanFromSeconds (long seconds) {
   long hours = minutes / 60;
   long days = hours / 24;
 
-  if (days > 1) {
-    sprintf(timespan, "%d days", days);
+  if (seconds == 0) {
+    sprintf(timespan, "permanently");
+  } else if (days > 1) {
+    sprintf(timespan, "for %ld days", days);
   } else if (hours > 1) {
-    sprintf(timespan, "%d hours", hours);
+    sprintf(timespan, "for %ld hours", hours);
   } else if (minutes > 1) {
-    sprintf(timespan, "%d minutes", minutes);
+    sprintf(timespan, "for %ld minutes", minutes);
   } else {
-    sprintf(timespan, "%d seconds", seconds);
+    sprintf(timespan, "for %ld seconds", seconds);
   }
 
   return timespan;
