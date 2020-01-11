@@ -18,7 +18,7 @@ int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type);
 int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs);
 
 int subnet = 56;
-char* defaultReason = "You have been banned for a terms of service violation.";
+char* defaultReason = "You have been banned for %s due to a terms of service violation.";
 
 struct IPUserInfo {
     char* username;
@@ -41,11 +41,11 @@ char* irccloudIPv6Subnet = "2001:67c:2f08";
  * Module information
  */
 ModuleHeader MOD_HEADER(m_autoban) = {
-"autoban",
-"$Id: v1.0",
-"Module that automatically retrieves user IP and performs a GZLine",
-"3.2-b8-1",
-NULL
+  "autoban",
+  "$Id: v1.1",
+  "Module that automatically retrieves user IP and performs a GZLine",
+  "3.2-b8-1",
+  NULL
 };
 
 MOD_TEST(m_autoban) {
@@ -59,6 +59,7 @@ MOD_TEST(m_autoban) {
 MOD_INIT(m_autoban) {
   HookAdd(modinfo->handle, HOOKTYPE_CONFIGRUN, 0, autoban_config_run);
   CommandAdd(modinfo->handle, "AUTOBAN", autoban_func, 3, M_USER);
+  CommandAdd(modinfo->handle, "AUTOBAHN", autoban_func, 3, M_USER);
   return MOD_SUCCESS;
 }
 
@@ -264,6 +265,30 @@ struct IPUserInfo getIPForNickname (char* nickname) {
 }
 
 /**
+ * Generate a simple human readable time span
+ * @param seconds
+ * @return
+ */
+char* timespanFromSeconds (long seconds) {
+  char* timespan = malloc(64);
+  long minutes = seconds / 60;
+  long hours = minutes / 60;
+  long days = hours / 24;
+
+  if (days > 1) {
+    sprintf(timespan, "%d days", days);
+  } else if (hours > 1) {
+    sprintf(timespan, "%d hours", hours);
+  } else if (minutes > 1) {
+    sprintf(timespan, "%d minutes", minutes);
+  } else {
+    sprintf(timespan, "%d seconds", seconds);
+  }
+
+  return timespan;
+}
+
+/**
  * The function containing the actual logic for the /autoban command
  */
 CMD_FUNC(autoban_func) {
@@ -342,16 +367,20 @@ CMD_FUNC(autoban_func) {
     banReason = parv[3];
   }
 
+  char* formattedTimeSpan = timespanFromSeconds(secs);
+  char formattedBanReason[512];
+  sprintf(formattedBanReason, banReason, formattedTimeSpan);
+
   char *tkllayer[9] = {
     me.name,
-      "+",
-      "G",
-      username,
-      banTarget,
-      make_nick_user_host(sptr->name, sptr->user->username, GetHost(sptr)),
-      expireAt,
-      setAt,
-      banReason
+    "+",
+    "G",
+    username,
+    banTarget,
+    make_nick_user_host(sptr->name, sptr->user->username, GetHost(sptr)),
+    expireAt,
+    setAt,
+    formattedBanReason
   };
 
   TS i = atol(expireAt);
@@ -369,6 +398,7 @@ CMD_FUNC(autoban_func) {
   if (ipRange != NULL) {
     free(ipRange);
   }
+  free(formattedTimeSpan);
   return 0;
 }
 
