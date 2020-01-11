@@ -18,7 +18,7 @@ int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type);
 int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs);
 
 int subnet = 56;
-char* defaultReason = "You have been banned %s due to a terms of service violation.";
+char* defaultReason = "You have been issued a %s ban due to a terms of service violation.";
 
 struct IPUserInfo {
     char* username;
@@ -276,15 +276,15 @@ char* timespanFromSeconds (long seconds) {
   long days = hours / 24;
 
   if (seconds == 0) {
-    sprintf(timespan, "permanently");
+    sprintf(timespan, "permanent");
   } else if (days > 1) {
-    sprintf(timespan, "for %ld days", days);
+    sprintf(timespan, "%ld day", days);
   } else if (hours > 1) {
-    sprintf(timespan, "for %ld hours", hours);
+    sprintf(timespan, "%ld hour", hours);
   } else if (minutes > 1) {
-    sprintf(timespan, "for %ld minutes", minutes);
+    sprintf(timespan, "%ld minute", minutes);
   } else {
-    sprintf(timespan, "for %ld seconds", seconds);
+    sprintf(timespan, "%ld second", seconds);
   }
 
   return timespan;
