@@ -40,15 +40,15 @@ char* irccloudIPv6Subnet = "2001:67c:2f08";
 /**
  * Module information
  */
-ModuleHeader MOD_HEADER(m_autoban) = {
-  "autoban",
-  "$Id: v1.0",
+ModuleHeader MOD_HEADER = {
+  "third/m_autoban",
+  "1.1",
   "Module that automatically retrieves user IP and performs a GZLine",
-  "3.2-b8-1",
-  NULL
+  "Fuel Rats",
+  "unrealircd-5"
 };
 
-MOD_TEST(m_autoban) {
+MOD_TEST() {
   HookAdd(modinfo->handle, HOOKTYPE_CONFIGTEST, 0, autoban_config_test);
   return MOD_SUCCESS;
 }
@@ -56,21 +56,21 @@ MOD_TEST(m_autoban) {
 /**
  * Called when the module is initialised by UnrealIRCD
  */
-MOD_INIT(m_autoban) {
+MOD_INIT() {
   HookAdd(modinfo->handle, HOOKTYPE_CONFIGRUN, 0, autoban_config_run);
-  CommandAdd(modinfo->handle, "AUTOBAN", autoban_func, 3, M_USER);
-  CommandAdd(modinfo->handle, "AUTOBAHN", autoban_func, 3, M_USER);
+  CommandAdd(modinfo->handle, "AUTOBAN", autoban_func, 3, CMD_OPER);
+  CommandAdd(modinfo->handle, "AUTOBAHN", autoban_func, 3, CMD_OPER);
   return MOD_SUCCESS;
 }
 
 /**
  * Called when the module is loaded by UnrealIRCD
  */
-MOD_LOAD(m_autoban) {
+MOD_LOAD() {
   return MOD_SUCCESS;
 }
 
-MOD_UNLOAD(m_tkl) {
+MOD_UNLOAD() {
   free(defaultReason);
   return MOD_SUCCESS;
 }
@@ -295,17 +295,17 @@ char* timespanFromSeconds (long seconds) {
  */
 CMD_FUNC(autoban_func) {
   if ((parc < 2) || BadPtr(parv[1]))  {
-    sendnotice(sptr, "Error: Nick/IP required");
-    return 0;
+    sendnotice(client, "Error: Nick/IP required");
+    return;
   }
 
-  if (IsServer(sptr)) {
-    return 0;
+  if (IsServer(client)) {
+    return;
   }
 
-  if (!ValidatePermissionsForPath(BANPERMISSION, sptr, NULL, NULL, NULL)) {
-    sendto_one(sptr, err_str(ERR_NOPRIVILEGES), me.name, sptr->name);
-    return 0;
+  if (!ValidatePermissionsForPath(BANPERMISSION, client,NULL,NULL,NULL)) {
+    sendnumeric(client, ERR_NOPRIVILEGES);
+    return;
   }
 
   // Allow the user to pass an IP address, if input is not recognised as one assume it's a nickname
@@ -318,13 +318,13 @@ CMD_FUNC(autoban_func) {
       username = userInfo.username;
     }
   } else if (isIRCCloudAddress(banTarget)) {
-    sendnotice(sptr, "Error: Do not directly ban IRCCloud IP addresses, use /autoban user");
-    return 0;
+    sendnotice(client, "Error: Do not directly ban IRCCloud IP addresses, use /autoban user");
+    return;
   }
 
   if (!banTarget) {
-    sendnotice(sptr, "Error: No valid ban target found, need an IP or an active user");
-    return 0;
+    sendnotice(client, "Error: No valid ban target found, need an IP or an active user");
+    return;
   }
 
   char* ipRange = NULL;
@@ -333,20 +333,20 @@ CMD_FUNC(autoban_func) {
   if (isValidIpv6Address(banTarget)) {
     ipRange = getIPv6BanRange(banTarget);
     if (!ipRange) {
-      sendnotice(sptr, "Error: Failed to create ban mask for IPv6 address");
-      return 0;
+      sendnotice(client, "Error: Failed to create ban mask for IPv6 address");
+      return;
     }
     banTarget = ipRange;
   }
 
-  TS secs = 0;
+  long secs = 0;
   char expireAt[1024], setAt[1024];
 
   if (parc > 2) {
-    secs = atime(parv[2]);
+    secs = config_checkval(parv[2], CFG_TIME);
     if (secs < 0) {
-      sendnotice(sptr, "*** [error] The time you specified is out of range!");
-      return 0;
+      sendnotice(client, "*** [error] The time you specified is out of range!");
+      return;
     }
   } else {
     secs = 604800;
@@ -379,28 +379,25 @@ CMD_FUNC(autoban_func) {
     "G",
     username,
     banTarget,
-    make_nick_user_host(sptr->name, sptr->user->username, GetHost(sptr)),
+    make_nick_user_host(client->name, client->user->username, GetHost(client)),
     expireAt,
     setAt,
     formattedBanReason
   };
 
-  TS i = atol(expireAt);
+  long i = atol(expireAt);
   struct tm *t = gmtime(&i);
 
   if (!t) {
-    sendto_one(sptr,
-               ":%s NOTICE %s :*** [error] The time you specified is out of range",
-               me.name, sptr->name);
-    return 0;
+    sendnotice(client, "*** [error] The time you specified is out of range");
+    return;
   }
 
-  m_tkl(&me, &me, 9, tkllayer);
+  cmd_tkl(&me, NULL, 9, tkllayer);
 
   if (ipRange != NULL) {
     free(ipRange);
   }
   free(formattedTimeSpan);
-  return 0;
 }
 
