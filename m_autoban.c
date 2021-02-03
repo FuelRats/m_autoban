@@ -71,7 +71,6 @@ MOD_LOAD() {
 }
 
 MOD_UNLOAD() {
-  free(defaultReason);
   return MOD_SUCCESS;
 }
 
