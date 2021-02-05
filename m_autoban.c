@@ -20,6 +20,8 @@ int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs);
 int subnet = 56;
 char* defaultReason = "You have been issued a %s ban due to a terms of service violation.";
 
+char* customBanReason = NULL;
+
 struct IPUserInfo {
     char* username;
     char* ipAddress;
@@ -71,6 +73,7 @@ MOD_LOAD() {
 }
 
 MOD_UNLOAD() {
+  free(customBanReason);
   return MOD_SUCCESS;
 }
 
@@ -129,7 +132,8 @@ int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type) {
     if (!strcmp(cep->ce_varname, "subnet")) {
       subnet = atoi(cep->ce_vardata);
     } else if (!strcmp(cep->ce_varname, "message")) {
-      defaultReason = strdup(cep->ce_vardata);
+      customBanReason = strdup(cep->ce_vardata);
+      defaultReason = customBanReason;
     }
   }
   return 1;
@@ -399,4 +403,3 @@ CMD_FUNC(autoban_func) {
   }
   free(formattedTimeSpan);
 }
-
