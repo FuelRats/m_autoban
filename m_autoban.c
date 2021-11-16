@@ -42,7 +42,7 @@ char* irccloudIPv4List[] = {
     "5.254.36.110"
 };
 
-char* irccloudIPv6Subnet = "2001:67c:2f08";
+char* irccloudIPv6Subnet = "2a03:5180:f:";
 
 /**
  * Module information
