@@ -49,10 +49,10 @@ char* irccloudIPv6Subnet = "2a03:5180:f:";
  */
 ModuleHeader MOD_HEADER = {
   "third/m_autoban",
-  "1.1",
+  "2.0",
   "Module that automatically retrieves user IP and performs a GZLine",
   "Fuel Rats",
-  "unrealircd-5"
+  "unrealircd-6"
 };
 
 MOD_TEST() {
@@ -90,31 +90,31 @@ int autoban_config_test (ConfigFile *cf, ConfigEntry *ce, int type, int *errs) {
     return 0;
   }
 
-  if (!ce || !ce->ce_varname || strcmp(ce->ce_varname, "autoban")) {
+  if (!ce || !ce->name || strcmp(ce->name, "autoban")) {
     return 0;
   }
 
-  for (cep = ce->ce_entries; cep; cep = cep->ce_next) {
-    if (!cep->ce_varname) {
+  for (cep = ce->items; cep; cep = cep->next) {
+    if (!cep->name) {
       config_error("%s:%i: blank set::autoban item",
-                   cep->ce_fileptr->cf_filename, cep->ce_varlinenum);
+                   cep->file->filename, cep->line_number);
       errors += 1;
       continue;
-    } else if (!strcmp(cep->ce_varname, "subnet")) {
-      if (cep->ce_vardata == NULL || atoi(cep->ce_vardata) == 0) {
+    } else if (!strcmp(cep->name, "subnet")) {
+      if (cep->value == NULL || atoi(cep->value) == 0) {
         config_error("%s:%i: expected a valid IPv6 subnet as integer set::autoban::%s",
-                     cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
+                     cep->file->filename, cep->line_number, cep->name);
         errors += 1;
       }
-    } else if (!strcmp(cep->ce_varname, "message")) {
-      if (cep->ce_vardata == NULL || strlen(cep->ce_vardata) < 1) {
+    } else if (!strcmp(cep->name, "message")) {
+      if (cep->value == NULL || strlen(cep->value) < 1) {
         config_error("%s:%i: default ban message required set::autoban::%s",
-                     cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
+                     cep->file->filename, cep->line_number, cep->name);
         errors += 1;
       }
     } else {
       config_error("%s:%i: unknown directive set::autoban::%s",
-                   cep->ce_fileptr->cf_filename, cep->ce_varlinenum, cep->ce_varname);
+                   cep->file->filename, cep->line_number, cep->name);
       errors += 1;
     }
   }
@@ -129,15 +129,15 @@ int autoban_config_run (ConfigFile *cf, ConfigEntry *ce, int type) {
     return 0;
   }
 
-  if (!ce || !ce->ce_varname || strcmp(ce->ce_varname, "autoban")) {
+  if (!ce || !ce->name || strcmp(ce->name, "autoban")) {
     return 0;
   }
 
-  for (cep = ce->ce_entries; cep; cep = cep->ce_next) {
-    if (!strcmp(cep->ce_varname, "subnet")) {
-      subnet = atoi(cep->ce_vardata);
-    } else if (!strcmp(cep->ce_varname, "message")) {
-      customBanReason = strdup(cep->ce_vardata);
+  for (cep = ce->items; cep; cep = cep->next) {
+    if (!strcmp(cep->name, "subnet")) {
+      subnet = atoi(cep->value);
+    } else if (!strcmp(cep->name, "message")) {
+      customBanReason = strdup(cep->value);
       defaultReason = customBanReason;
     }
   }
@@ -200,7 +200,7 @@ char* getIPv6BanRange (char *ipAddress) {
   while (index < range) {
     uint16_t group = address[(index / 4)];
     int remainder = range - index;
-    char output[8];
+    char output[9];
 
     // Our subnet division is inside the current group, calculate where and cut if off
     if (remainder < 4) {
@@ -210,7 +210,7 @@ char* getIPv6BanRange (char *ipAddress) {
         sprintf(output, "%x", group);
         char delimitedOutput[8];
         substr(output, delimitedOutput, 0, remainder);
-        sprintf(output, "%s*", delimitedOutput);
+        sprintf(output, "%s%c", delimitedOutput, '*');
       }
       // Our subnet division is exactly at the end of the current group, cut it off
     } else if (remainder == 4) {
@@ -253,7 +253,7 @@ bool isIRCCloudAddress (const char *address) {
  */
 struct IPUserInfo getIPForNickname (char* nickname) {
   struct IPUserInfo noInfo = { NULL, NULL };
-  struct Client* user = find_person(nickname, NULL);
+  struct Client* user = find_user(nickname, NULL);
   char* username = NULL;
   if (!user) {
     return noInfo;
@@ -317,7 +317,7 @@ CMD_FUNC(autoban_func) {
   }
 
   // Allow the user to pass an IP address, if input is not recognised as one assume it's a nickname
-  char* banTarget = parv[1];
+  char* banTarget = (char *)parv[1];
   char* username = "*";
   if (!isValidIpv4Address(banTarget) && !isValidIpv6Address(banTarget)) {
     struct IPUserInfo userInfo = getIPForNickname(banTarget);
@@ -374,14 +374,14 @@ CMD_FUNC(autoban_func) {
 
   char* banReason = defaultReason;
   if (parc > 3) {
-    banReason = parv[3];
+    banReason = (char *)parv[3];
   }
 
   char* formattedTimeSpan = timespanFromSeconds(secs);
   char formattedBanReason[512];
   sprintf(formattedBanReason, banReason, formattedTimeSpan);
 
-  char *tkllayer[9] = {
+  char* tkllayer[9] = {
     me.name,
     "+",
     "G",
@@ -401,7 +401,7 @@ CMD_FUNC(autoban_func) {
     return;
   }
 
-  cmd_tkl(&me, NULL, 9, tkllayer);
+  cmd_tkl(&me, NULL, 9, (const char**)tkllayer);
 
   if (ipRange != NULL) {
     free(ipRange);
